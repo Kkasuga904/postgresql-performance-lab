@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres:17.6-bookworm
+    environment:
+      POSTGRES_DB: performance_lab
+      POSTGRES_USER: lab_user
+      POSTGRES_PASSWORD: lab_password
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./sql:/lab/sql:ro
+      - ./scripts:/lab/scripts:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lab_user -d performance_lab"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    command:
+      - postgres
+      - -c
+      - log_lock_waits=on
+      - -c
+      - deadlock_timeout=1s
+      - -c
+      - log_min_duration_statement=500
+
+volumes:
+  postgres-data:
+
