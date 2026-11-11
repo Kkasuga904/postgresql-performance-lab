@@ -1,0 +1,63 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sql-labs:
+    runs-on: ubuntu-24.04
+    container: postgres:17.6-bookworm
+    services:
+      postgres:
+        image: postgres:17.6-bookworm
+        env:
+          POSTGRES_DB: performance_lab
+          POSTGRES_USER: lab_user
+          POSTGRES_PASSWORD: lab_password
+        options: >-
+          --health-cmd "pg_isready -U lab_user -d performance_lab"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: performance_lab
+      PGUSER: lab_user
+      PGPASSWORD: lab_password
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Wait for stable PostgreSQL readiness
+        shell: sh
+        run: |
+          set -eu
+          ready_checks=0
+          while [ "$ready_checks" -lt 3 ]; do
+            if pg_isready --quiet; then
+              ready_checks=$((ready_checks + 1))
+            else
+              ready_checks=0
+            fi
+            sleep 1
+          done
+      - name: Run deterministic SQL labs
+        shell: sh
+        run: |
+          set -eu
+          for sql_file in \
+            00_schema.sql \
+            01_seed.sql \
+            02_index_lab.sql \
+            06_vacuum_lab.sql \
+            07_connection_lab.sql \
+            08_monitoring.sql
+          do
+            psql -v ON_ERROR_STOP=1 -f "sql/$sql_file"
+          done
+      - name: Verify lock, deadlock, and isolation behavior
+        run: sh scripts/verify-concurrency.sh
